@@ -5,7 +5,9 @@ const memberSchema = new mongoose.Schema(
     clientId: {
       type: String,
       required: true,
+      unique: true,
       trim: true,
+      index: true,
     },
 
     fullName: {
@@ -33,6 +35,14 @@ const memberSchema = new mongoose.Schema(
     },
 
     gymId: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+
+    // Trainer assigned by owner
+    trainerId: {
       type: String,
       required: true,
       trim: true,
@@ -69,12 +79,6 @@ const memberSchema = new mongoose.Schema(
   {
     timestamps: true,
   }
-);
-
-// Client ID must be unique within a gym
-memberSchema.index(
-  { gymId: 1, clientId: 1 },
-  { unique: true }
 );
 
 const Member = mongoose.model("Member", memberSchema);

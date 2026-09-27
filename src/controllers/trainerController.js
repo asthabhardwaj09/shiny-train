@@ -2,6 +2,11 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 import Trainer from "../models/Trainer.js";
+import Member from "../models/Member.js";
+
+// ======================================================
+// ADD TRAINER - OWNER ONLY
+// ======================================================
 
 const addTrainer = async (req, res) => {
   try {
@@ -25,6 +30,7 @@ const addTrainer = async (req, res) => {
 
     // Required fields
     if (
+      !trainerId ||
       !fullName ||
       !phone ||
       !email ||
@@ -61,13 +67,25 @@ const addTrainer = async (req, res) => {
       });
     }
 
-    // Check duplicate trainer email inside this gym
-    const existingTrainer = await Trainer.findOne({
+    // Trainer ID must be unique
+    const existingTrainerId = await Trainer.findOne({
+      trainerId: trainerId.trim(),
+    });
+
+    if (existingTrainerId) {
+      return res.status(409).json({
+        success: false,
+        message: "Trainer ID already exists",
+      });
+    }
+
+    // Check duplicate email inside this gym
+    const existingTrainerEmail = await Trainer.findOne({
       gymId: req.user.gymId,
       email: email.toLowerCase().trim(),
     });
 
-    if (existingTrainer) {
+    if (existingTrainerEmail) {
       return res.status(409).json({
         success: false,
         message: "A trainer with this email already exists",
@@ -95,6 +113,7 @@ const addTrainer = async (req, res) => {
       data: {
         trainer: {
           id: trainer._id,
+          trainerId: trainer.trainerId,
           fullName: trainer.fullName,
           phone: trainer.phone,
           email: trainer.email,
@@ -108,12 +127,24 @@ const addTrainer = async (req, res) => {
   } catch (error) {
     console.error("Add trainer error:", error);
 
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Trainer ID already exists",
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Internal server error",
     });
   }
 };
+
+
+// ======================================================
+// GET TRAINERS - OWNER ONLY
+// ======================================================
 
 const getTrainers = async (req, res) => {
   try {
@@ -125,7 +156,7 @@ const getTrainers = async (req, res) => {
       });
     }
 
-    // Get only trainers belonging to the logged-in owner's gym
+    // Only trainers belonging to owner's gym
     const trainers = await Trainer.find({
       gymId: req.user.gymId,
     })
@@ -149,11 +180,15 @@ const getTrainers = async (req, res) => {
   }
 };
 
+
+// ======================================================
+// TRAINER LOGIN
+// ======================================================
+
 const loginTrainer = async (req, res) => {
   try {
     const { trainerId, password } = req.body;
 
-    // Required fields
     if (!trainerId || !password) {
       return res.status(400).json({
         success: false,
@@ -161,7 +196,6 @@ const loginTrainer = async (req, res) => {
       });
     }
 
-    // Find trainer using Trainer ID
     const trainer = await Trainer.findOne({
       trainerId: trainerId.trim(),
     });
@@ -173,7 +207,6 @@ const loginTrainer = async (req, res) => {
       });
     }
 
-    // Check trainer account status
     if (trainer.status !== "ACTIVE") {
       return res.status(403).json({
         success: false,
@@ -181,7 +214,6 @@ const loginTrainer = async (req, res) => {
       });
     }
 
-    // Check password
     const isPasswordValid = await bcrypt.compare(
       password,
       trainer.password
@@ -194,7 +226,6 @@ const loginTrainer = async (req, res) => {
       });
     }
 
-    // Generate JWT
     const token = jwt.sign(
       {
         trainerId: trainer.trainerId,
@@ -212,6 +243,7 @@ const loginTrainer = async (req, res) => {
       message: "Trainer login successful",
       data: {
         token,
+
         trainer: {
           id: trainer._id,
           trainerId: trainer.trainerId,
@@ -235,4 +267,173 @@ const loginTrainer = async (req, res) => {
   }
 };
 
-export { addTrainer, getTrainers, loginTrainer };
+
+// ======================================================
+// GET CLIENTS ASSIGNED TO LOGGED-IN TRAINER
+// ======================================================
+
+const getTrainerClients = async (req, res) => {
+  try {
+    if (req.user.role !== "TRAINER") {
+      return res.status(403).json({
+        success: false,
+        message: "Only trainers can view assigned clients",
+      });
+    }
+
+    const {
+      search = "",
+      status = "ALL",
+    } = req.query;
+
+    const now = new Date();
+
+    // Automatically expire memberships
+    await Member.updateMany(
+      {
+        trainerId: req.user.trainerId,
+        gymId: req.user.gymId,
+        endDate: { $lt: now },
+        status: "ACTIVE",
+      },
+      {
+        $set: {
+          status: "EXPIRED",
+        },
+      }
+    );
+
+    const query = {
+      trainerId: req.user.trainerId,
+      gymId: req.user.gymId,
+    };
+
+    const normalizedStatus = status.toUpperCase();
+
+    // ACTIVE filter
+    if (normalizedStatus === "ACTIVE") {
+      query.status = "ACTIVE";
+    }
+
+    // EXPIRED filter
+    if (normalizedStatus === "EXPIRED") {
+      query.status = "EXPIRED";
+    }
+
+    // EXPIRING filter
+    if (normalizedStatus === "EXPIRING") {
+      const sevenDaysLater = new Date(now);
+
+      sevenDaysLater.setDate(
+        sevenDaysLater.getDate() + 7
+      );
+
+      query.status = "ACTIVE";
+
+      query.endDate = {
+        $gte: now,
+        $lte: sevenDaysLater,
+      };
+    }
+
+    // Search
+    if (search.trim()) {
+      const searchValue = search.trim();
+
+      query.$or = [
+        {
+          fullName: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          clientId: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          email: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          membershipPlan: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          planName: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    const clients = await Member.find(query)
+      .select("-password")
+      .sort({ createdAt: -1 });
+
+    // Get all assigned clients for overview
+    const allClients = await Member.find({
+      trainerId: req.user.trainerId,
+      gymId: req.user.gymId,
+    }).select("status endDate");
+
+    const sevenDaysLater = new Date(now);
+
+    sevenDaysLater.setDate(
+      sevenDaysLater.getDate() + 7
+    );
+
+    const active = allClients.filter(
+      (client) => client.status === "ACTIVE"
+    ).length;
+
+    const expired = allClients.filter(
+      (client) => client.status === "EXPIRED"
+    ).length;
+
+    const expiring = allClients.filter(
+      (client) =>
+        client.status === "ACTIVE" &&
+        client.endDate >= now &&
+        client.endDate <= sevenDaysLater
+    ).length;
+
+    return res.status(200).json({
+      success: true,
+      message: "Assigned clients fetched successfully",
+
+      data: {
+        overview: {
+          total: allClients.length,
+          active,
+          expiring,
+          expired,
+        },
+
+        clients,
+      },
+    });
+  } catch (error) {
+    console.error("Get trainer clients error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+
+export {
+  addTrainer,
+  getTrainers,
+  loginTrainer,
+  getTrainerClients,
+};

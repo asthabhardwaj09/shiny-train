@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import Member from "../models/Member.js";
 
+import Trainer from "../models/Trainer.js";
+
 const MEMBER_PLANS = {
   BASIC: {
     price: 5000,
@@ -20,30 +22,31 @@ const MEMBER_PLANS = {
 
 const addMember = async (req, res) => {
   try {
-    // Only owners can add members
     if (req.user.role !== "OWNER") {
       return res.status(403).json({
         success: false,
-        message: "Only gym owners can add members",
+        message: "Only gym owners can add clients",
       });
     }
 
     const {
+      clientId,
       fullName,
-      planName,
       phone,
       email,
       password,
+      trainerId,
       membershipPlan,
       startDate,
     } = req.body;
 
-    // Required fields
     if (
+      !clientId ||
       !fullName ||
       !phone ||
       !email ||
       !password ||
+      !trainerId ||
       !membershipPlan ||
       !startDate
     ) {
@@ -53,7 +56,6 @@ const addMember = async (req, res) => {
       });
     }
 
-    // Validate password
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
@@ -61,17 +63,47 @@ const addMember = async (req, res) => {
       });
     }
 
-    // Validate membership plan
-    const selectedPlan = MEMBER_PLANS[membershipPlan];
+    // Client ID must be unique
+    const existingClient = await Member.findOne({
+      clientId: clientId.trim(),
+    });
 
-    if (!selectedPlan) {
+    if (existingClient) {
+      return res.status(409).json({
+        success: false,
+        message: "Client ID already exists",
+      });
+    }
+
+    // Trainer must exist inside owner's gym
+    const trainer = await Trainer.findOne({
+      trainerId: trainerId.trim(),
+      gymId: req.user.gymId,
+      status: "ACTIVE",
+    });
+
+    if (!trainer) {
+      return res.status(404).json({
+        success: false,
+        message: "Active trainer not found in this gym",
+      });
+    }
+
+    const planDurations = {
+      BASIC: 1,
+      STANDARD: 3,
+      PREMIUM: 6,
+    };
+
+    const normalizedPlan = membershipPlan.toUpperCase();
+
+    if (!planDurations[normalizedPlan]) {
       return res.status(400).json({
         success: false,
         message: "Invalid membership plan",
       });
     }
 
-    // Validate start date
     const membershipStartDate = new Date(startDate);
 
     if (Number.isNaN(membershipStartDate.getTime())) {
@@ -81,64 +113,55 @@ const addMember = async (req, res) => {
       });
     }
 
-    // Automatically calculate end date
-    const membershipEndDate = new Date(membershipStartDate);
+    const endDate = new Date(membershipStartDate);
 
-    membershipEndDate.setMonth(
-      membershipEndDate.getMonth() + selectedPlan.durationMonths
+    endDate.setMonth(
+      endDate.getMonth() + planDurations[normalizedPlan]
     );
 
-    // Check whether email already exists in this gym
-    const existingMember = await Member.findOne({
-      gymId: req.user.gymId,
-      email: email.toLowerCase().trim(),
-    });
-
-    if (existingMember) {
-      return res.status(409).json({
-        success: false,
-        message: "A member with this email already exists",
-      });
-    }
-
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create member
     const member = await Member.create({
+      clientId: clientId.trim(),
       fullName: fullName.trim(),
-      planName: planName?.trim() || "",
       phone: phone.trim(),
       email: email.toLowerCase().trim(),
 
-      // Gym ID comes from authenticated owner's JWT
+      // Automatically taken from Owner JWT
       gymId: req.user.gymId,
 
+      // Selected by owner
+      trainerId: trainer.trainerId,
+
       password: hashedPassword,
-      membershipPlan: membershipPlan.trim(),
+
+      membershipPlan: normalizedPlan,
+      planName: `${normalizedPlan} Plan`,
 
       startDate: membershipStartDate,
-      endDate: membershipEndDate,
+      endDate,
 
       status: "ACTIVE",
     });
 
     return res.status(201).json({
       success: true,
-      message: "Member added successfully",
+      message: "Client added and assigned to trainer successfully",
       data: {
-        member: {
+        client: {
           id: member._id,
+          clientId: member.clientId,
           fullName: member.fullName,
-          planName: member.planName,
           phone: member.phone,
           email: member.email,
           gymId: member.gymId,
+
+          trainer: {
+            trainerId: trainer.trainerId,
+            fullName: trainer.fullName,
+          },
+
           membershipPlan: member.membershipPlan,
-
-          price: selectedPlan.price,
-          durationMonths: selectedPlan.durationMonths,
-
           startDate: member.startDate,
           endDate: member.endDate,
           status: member.status,
@@ -147,6 +170,13 @@ const addMember = async (req, res) => {
     });
   } catch (error) {
     console.error("Add member error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Client ID already exists",
+      });
+    }
 
     return res.status(500).json({
       success: false,

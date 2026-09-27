@@ -8,6 +8,11 @@ import memberRoutes from "./src/routes/memberRoutes.js";
 import trainerRoutes from "./src/routes/trainerRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
 import planRoutes from "./src/routes/planRoutes.js";
+import sessionRoutes from "./src/routes/sessionRoutes.js";
+
+import trainerDashboardRoutes from "./src/routes/trainerDashboardRoutes.js";
+import trainerProgressRoutes from "./src/routes/trainerProgressRoutes.js";
+import trainerProfileRoutes from "./src/routes/trainerProfileRoutes.js";
 
 dotenv.config();
 
@@ -22,6 +27,23 @@ app.use("/api/members", memberRoutes);
 app.use("/api/trainers", trainerRoutes);
 app.use("/api/owner/dashboard", dashboardRoutes);
 app.use("/api/plans", planRoutes);
+app.use("/api/trainers/sessions", sessionRoutes);
+app.use(
+  "/api/trainers/progress",
+  trainerProgressRoutes
+);
+
+
+
+app.use(
+  "/api/trainers/dashboard",
+  trainerDashboardRoutes
+);
+
+app.use(
+  "/api/trainers/profile",
+  trainerProfileRoutes
+);
 
 app.get("/api/test-deployment", (req, res) => {
   res.status(200).json({
