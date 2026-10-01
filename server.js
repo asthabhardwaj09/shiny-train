@@ -13,6 +13,15 @@ import sessionRoutes from "./src/routes/sessionRoutes.js";
 import trainerDashboardRoutes from "./src/routes/trainerDashboardRoutes.js";
 import trainerProgressRoutes from "./src/routes/trainerProgressRoutes.js";
 import trainerProfileRoutes from "./src/routes/trainerProfileRoutes.js";
+import clientAuthRoutes from "./src/routes/clientAuthRoutes.js";
+import clientDashboardRoutes from "./src/routes/clientDashboardRoutes.js";
+
+import trainerWorkoutRoutes from "./src/routes/trainerWorkoutRoutes.js";
+import clientWorkoutRoutes from "./src/routes/clientWorkoutRoutes.js";
+import clientProgressRoutes from "./src/routes/clientProgressRoutes.js";
+
+import clientNutritionRoutes from "./src/routes/clientNutritionRoutes.js";
+import clientProfileRoutes from "./src/routes/clientProfileRoutes.js";
 
 dotenv.config();
 
@@ -43,6 +52,40 @@ app.use(
 app.use(
   "/api/trainers/profile",
   trainerProfileRoutes
+);
+
+app.use("/api/client/auth", clientAuthRoutes);
+
+app.use("/api/client/auth", clientAuthRoutes);
+
+app.use(
+  "/api/client/dashboard",
+  clientDashboardRoutes
+);
+
+app.use(
+  "/api/trainers/workouts",
+  trainerWorkoutRoutes
+);
+
+app.use(
+  "/api/client/workouts",
+  clientWorkoutRoutes
+);
+
+app.use(
+  "/api/client/progress",
+  clientProgressRoutes
+);
+
+app.use(
+  "/api/client/nutrition",
+  clientNutritionRoutes
+);
+
+app.use(
+  "/api/client/profile",
+  clientProfileRoutes
 );
 
 app.get("/api/test-deployment", (req, res) => {
