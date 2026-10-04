@@ -40,13 +40,13 @@ const addMember = async (req, res) => {
       startDate,
     } = req.body;
 
+    // trainerId is optional
     if (
       !clientId ||
       !fullName ||
       !phone ||
       !email ||
       !password ||
-      !trainerId ||
       !membershipPlan ||
       !startDate
     ) {
@@ -75,18 +75,23 @@ const addMember = async (req, res) => {
       });
     }
 
-    // Trainer must exist inside owner's gym
-    const trainer = await Trainer.findOne({
-      trainerId: trainerId.trim(),
-      gymId: req.user.gymId,
-      status: "ACTIVE",
-    });
+    // Trainer is optional
+    let trainer = null;
 
-    if (!trainer) {
-      return res.status(404).json({
-        success: false,
-        message: "Active trainer not found in this gym",
+    // If owner selected a trainer, validate it
+    if (trainerId && trainerId.trim()) {
+      trainer = await Trainer.findOne({
+        trainerId: trainerId.trim(),
+        gymId: req.user.gymId,
+        status: "ACTIVE",
       });
+
+      if (!trainer) {
+        return res.status(404).json({
+          success: false,
+          message: "Active trainer not found in this gym",
+        });
+      }
     }
 
     const planDurations = {
@@ -130,8 +135,8 @@ const addMember = async (req, res) => {
       // Automatically taken from Owner JWT
       gymId: req.user.gymId,
 
-      // Selected by owner
-      trainerId: trainer.trainerId,
+      // null when no trainer is selected
+      trainerId: trainer ? trainer.trainerId : null,
 
       password: hashedPassword,
 
@@ -146,7 +151,10 @@ const addMember = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Client added and assigned to trainer successfully",
+      message: trainer
+        ? "Client added and assigned to trainer successfully"
+        : "Client added successfully without trainer assignment",
+
       data: {
         client: {
           id: member._id,
@@ -156,10 +164,12 @@ const addMember = async (req, res) => {
           email: member.email,
           gymId: member.gymId,
 
-          trainer: {
-            trainerId: trainer.trainerId,
-            fullName: trainer.fullName,
-          },
+          trainer: trainer
+            ? {
+              trainerId: trainer.trainerId,
+              fullName: trainer.fullName,
+            }
+            : null,
 
           membershipPlan: member.membershipPlan,
           startDate: member.startDate,

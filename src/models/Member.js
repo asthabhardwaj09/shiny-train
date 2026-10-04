@@ -42,9 +42,10 @@ const memberSchema = new mongoose.Schema(
     },
 
     // Trainer assigned by owner
+    // Trainer assigned by owner - optional
     trainerId: {
       type: String,
-      required: true,
+      default: null,
       trim: true,
       index: true,
     },
