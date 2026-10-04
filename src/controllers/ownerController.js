@@ -245,12 +245,22 @@ const sendForgotPasswordOTP = async (req, res) => {
             });
         }
 
+        // Password reset is available only for purchased/approved gym accounts
+        if (owner.paymentStatus !== "APPROVED") {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Password reset is available only for purchased gym accounts",
+            });
+        }
+
         const otp = Math.floor(
             100000 + Math.random() * 900000
         ).toString();
 
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
+        // Remove any previous OTP for this email
         await PasswordResetOTP.deleteMany({
             email: owner.email,
         });
@@ -280,7 +290,6 @@ const sendForgotPasswordOTP = async (req, res) => {
         });
     }
 };
-
 const verifyForgotPasswordOTP = async (req, res) => {
     try {
         const { email, otp } = req.body;
@@ -359,19 +368,38 @@ const verifyForgotPasswordOTP = async (req, res) => {
 
 const resetOwnerPassword = async (req, res) => {
     try {
-        const { email, newPassword } = req.body;
+        const {
+            email,
+            gymId,
+            newPassword,
+            confirmPassword,
+        } = req.body;
 
-        if (!email || !newPassword) {
+        if (!email || !gymId || !newPassword || !confirmPassword) {
             return res.status(400).json({
                 success: false,
-                message: "Email and new password are required",
+                message:
+                    "Email, Gym ID, new password and confirm password are required",
             });
         }
 
-        if (newPassword.length < 6) {
+        // Check whether both password fields match
+        if (newPassword !== confirmPassword) {
             return res.status(400).json({
                 success: false,
-                message: "Password must be at least 6 characters",
+                message: "New password and confirm password do not match",
+            });
+        }
+
+        // Password validation according to Reset Password UI
+        const passwordRegex =
+            /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+        if (!passwordRegex.test(newPassword)) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Password must contain at least 8 characters, one uppercase letter, one lowercase letter, one number and one special character",
             });
         }
 
@@ -386,6 +414,15 @@ const resetOwnerPassword = async (req, res) => {
             });
         }
 
+        // Verify that Gym ID belongs to the same owner
+        if (owner.gymId !== gymId.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Gym ID",
+            });
+        }
+
+        // Keep the existing OTP verification requirement
         const otpRecord = await PasswordResetOTP.findOne({
             email: owner.email,
             verified: true,
@@ -407,6 +444,7 @@ const resetOwnerPassword = async (req, res) => {
 
         await owner.save();
 
+        // OTP cannot be reused after password reset
         await PasswordResetOTP.deleteOne({
             _id: otpRecord._id,
         });

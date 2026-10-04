@@ -22,6 +22,7 @@ import clientProgressRoutes from "./src/routes/clientProgressRoutes.js";
 
 import clientNutritionRoutes from "./src/routes/clientNutritionRoutes.js";
 import clientProfileRoutes from "./src/routes/clientProfileRoutes.js";
+import notificationRoutes from "./src/routes/notificationRoutes.js";
 
 dotenv.config();
 
@@ -56,7 +57,6 @@ app.use(
 
 app.use("/api/client/auth", clientAuthRoutes);
 
-app.use("/api/client/auth", clientAuthRoutes);
 
 app.use(
   "/api/client/dashboard",
@@ -86,6 +86,11 @@ app.use(
 app.use(
   "/api/client/profile",
   clientProfileRoutes
+);
+
+app.use(
+  "/api/notifications",
+  notificationRoutes
 );
 
 app.get("/api/test-deployment", (req, res) => {
