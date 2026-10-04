@@ -195,17 +195,158 @@ const getMembers = async (req, res) => {
       });
     }
 
-    // Get only members belonging to the logged-in owner's gym
-    const members = await Member.find({
+    const {
+      search = "",
+      status = "ALL",
+    } = req.query;
+
+    const now = new Date();
+
+    // Automatically expire memberships whose end date has passed
+    await Member.updateMany(
+      {
+        gymId: req.user.gymId,
+        endDate: { $lt: now },
+        status: "ACTIVE",
+      },
+      {
+        $set: {
+          status: "EXPIRED",
+        },
+      }
+    );
+
+    const query = {
       gymId: req.user.gymId,
-    })
+    };
+
+    const normalizedStatus = status.toUpperCase();
+
+    // Validate status filter
+    if (
+      !["ALL", "ACTIVE", "EXPIRING", "EXPIRED"].includes(
+        normalizedStatus
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid member status filter",
+      });
+    }
+
+    // ACTIVE
+    if (normalizedStatus === "ACTIVE") {
+      query.status = "ACTIVE";
+    }
+
+    // EXPIRED
+    if (normalizedStatus === "EXPIRED") {
+      query.status = "EXPIRED";
+    }
+
+    // EXPIRING within next 7 days
+    if (normalizedStatus === "EXPIRING") {
+      const sevenDaysLater = new Date(now);
+
+      sevenDaysLater.setDate(
+        sevenDaysLater.getDate() + 7
+      );
+
+      query.status = "ACTIVE";
+
+      query.endDate = {
+        $gte: now,
+        $lte: sevenDaysLater,
+      };
+    }
+
+    // Search by name, client ID, phone, email or plan
+    if (search.trim()) {
+      const searchValue = search.trim();
+
+      query.$or = [
+        {
+          fullName: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          clientId: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          phone: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          email: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          membershipPlan: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+        {
+          planName: {
+            $regex: searchValue,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    // Members according to search/filter
+    const members = await Member.find(query)
       .select("-password")
       .sort({ createdAt: -1 });
+
+    // All members are needed for overview counts
+    const allMembers = await Member.find({
+      gymId: req.user.gymId,
+    }).select("status endDate");
+
+    const sevenDaysLater = new Date(now);
+
+    sevenDaysLater.setDate(
+      sevenDaysLater.getDate() + 7
+    );
+
+    const active = allMembers.filter(
+      (member) => member.status === "ACTIVE"
+    ).length;
+
+    const expired = allMembers.filter(
+      (member) => member.status === "EXPIRED"
+    ).length;
+
+    const expiring = allMembers.filter(
+      (member) =>
+        member.status === "ACTIVE" &&
+        member.endDate >= now &&
+        member.endDate <= sevenDaysLater
+    ).length;
 
     return res.status(200).json({
       success: true,
       message: "Members fetched successfully",
+
       data: {
+        overview: {
+          total: allMembers.length,
+          active,
+          expiring,
+          expired,
+        },
+
         members,
       },
     });
