@@ -5,6 +5,9 @@ import {
   getTrainers,
   loginTrainer,
   getTrainerClients,
+  getTrainerById,
+  assignMemberToTrainer,
+  deleteTrainer,
 } from "../controllers/trainerController.js";
 
 import authMiddleware from "../middleware/authMiddleware.js";
@@ -24,5 +27,23 @@ router.get(
 // Owner trainer management
 router.get("/", authMiddleware, getTrainers);
 router.post("/", authMiddleware, addTrainer);
+
+router.patch(
+  "/:trainerId/members/:clientId",
+  authMiddleware,
+  assignMemberToTrainer
+);
+
+router.get(
+  "/:trainerId",
+  authMiddleware,
+  getTrainerById
+);
+
+router.delete(
+  "/:trainerId",
+  authMiddleware,
+  deleteTrainer
+);
 
 export default router;

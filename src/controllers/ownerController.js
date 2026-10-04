@@ -223,6 +223,86 @@ const getOwnerProfile = async (req, res) => {
     }
 };
 
+const updateOwnerProfile = async (req, res) => {
+    try {
+        if (req.user.role !== "OWNER") {
+            return res.status(403).json({
+                success: false,
+                message: "Only gym owners can update profile",
+            });
+        }
+
+        const {
+            ownerName,
+            gymName,
+            email,
+            phone,
+        } = req.body;
+
+        if (!ownerName || !gymName || !email || !phone) {
+            return res.status(400).json({
+                success: false,
+                message: "Owner name, gym name, email and phone are required",
+            });
+        }
+
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // Make sure another owner is not using this email
+        const existingOwner = await Owner.findOne({
+            email: normalizedEmail,
+            _id: { $ne: req.user.ownerId },
+        });
+
+        if (existingOwner) {
+            return res.status(409).json({
+                success: false,
+                message: "Email is already in use",
+            });
+        }
+
+        const owner = await Owner.findById(req.user.ownerId);
+
+        if (!owner) {
+            return res.status(404).json({
+                success: false,
+                message: "Owner not found",
+            });
+        }
+
+        owner.ownerName = ownerName.trim();
+        owner.gymName = gymName.trim();
+        owner.email = normalizedEmail;
+        owner.phone = phone.trim();
+
+        await owner.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Owner profile updated successfully",
+            data: {
+                owner: {
+                    id: owner._id,
+                    ownerName: owner.ownerName,
+                    gymName: owner.gymName,
+                    gymId: owner.gymId,
+                    email: owner.email,
+                    phone: owner.phone,
+                    plan: owner.plan,
+                    membershipStatus: owner.membershipStatus,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("Update owner profile error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+        });
+    }
+};
+
 const sendForgotPasswordOTP = async (req, res) => {
     try {
         const { email } = req.body;
@@ -467,6 +547,7 @@ export {
     createOwnerPurchase,
     loginOwner,
     getOwnerProfile,
+    updateOwnerProfile,
     sendForgotPasswordOTP,
     verifyForgotPasswordOTP,
     resetOwnerPassword,

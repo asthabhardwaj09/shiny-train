@@ -7,6 +7,7 @@ import {
     sendForgotPasswordOTP,
     verifyForgotPasswordOTP,
     resetOwnerPassword,
+    updateOwnerProfile,
 } from "../controllers/ownerController.js";
 
 import authMiddleware from "../middleware/authMiddleware.js";
@@ -24,5 +25,13 @@ router.post("/forgot-password", sendForgotPasswordOTP);
 router.post("/verify-otp", verifyForgotPasswordOTP);
 
 router.post("/reset-password", resetOwnerPassword);
+
+router.get("/profile", authMiddleware, getOwnerProfile);
+
+router.patch(
+    "/profile",
+    authMiddleware,
+    updateOwnerProfile
+);
 
 export default router;

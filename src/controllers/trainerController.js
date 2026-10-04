@@ -430,10 +430,216 @@ const getTrainerClients = async (req, res) => {
   }
 };
 
+const getTrainerById = async (req, res) => {
+  try {
+    // Only owner can view trainer details
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Only gym owners can view trainer details",
+      });
+    }
+
+    const { trainerId } = req.params;
+
+    // Trainer must belong to logged-in owner's gym
+    const trainer = await Trainer.findOne({
+      trainerId: trainerId.trim(),
+      gymId: req.user.gymId,
+    }).select("-password");
+
+    if (!trainer) {
+      return res.status(404).json({
+        success: false,
+        message: "Trainer not found",
+      });
+    }
+
+    // Get members assigned to this trainer
+    const assignedMembers = await Member.find({
+      trainerId: trainer.trainerId,
+      gymId: req.user.gymId,
+    })
+      .select("-password")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      message: "Trainer details fetched successfully",
+      data: {
+        trainer: {
+          id: trainer._id,
+          trainerId: trainer.trainerId,
+          fullName: trainer.fullName,
+          phone: trainer.phone,
+          email: trainer.email,
+          specialization: trainer.specialization,
+          experience: trainer.experience,
+          status: trainer.status,
+          assignedMembersCount: assignedMembers.length,
+        },
+
+        assignedMembers,
+      },
+    });
+  } catch (error) {
+    console.error("Get trainer details error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+const assignMemberToTrainer = async (req, res) => {
+  try {
+    // Owner only
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Only gym owners can assign members to trainers",
+      });
+    }
+
+    const { trainerId, clientId } = req.params;
+
+    // Trainer must belong to owner's gym and be active
+    const trainer = await Trainer.findOne({
+      trainerId: trainerId.trim(),
+      gymId: req.user.gymId,
+      status: "ACTIVE",
+    }).select("-password");
+
+    if (!trainer) {
+      return res.status(404).json({
+        success: false,
+        message: "Active trainer not found in this gym",
+      });
+    }
+
+    // Member must belong to owner's gym
+    const member = await Member.findOne({
+      clientId: clientId.trim(),
+      gymId: req.user.gymId,
+    });
+
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: "Member not found in this gym",
+      });
+    }
+
+    // Already assigned to same trainer
+    if (member.trainerId === trainer.trainerId) {
+      return res.status(200).json({
+        success: true,
+        message: "Member is already assigned to this trainer",
+        data: {
+          member: {
+            clientId: member.clientId,
+            fullName: member.fullName,
+            trainerId: member.trainerId,
+          },
+        },
+      });
+    }
+
+    // Assign / reassign
+    member.trainerId = trainer.trainerId;
+    await member.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Member assigned to trainer successfully",
+      data: {
+        member: {
+          clientId: member.clientId,
+          fullName: member.fullName,
+          trainerId: member.trainerId,
+        },
+        trainer: {
+          trainerId: trainer.trainerId,
+          fullName: trainer.fullName,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Assign member to trainer error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+const deleteTrainer = async (req, res) => {
+  try {
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Only gym owners can delete trainers",
+      });
+    }
+
+    const { trainerId } = req.params;
+
+    const trainer = await Trainer.findOne({
+      trainerId: trainerId.trim(),
+      gymId: req.user.gymId,
+    });
+
+    if (!trainer) {
+      return res.status(404).json({
+        success: false,
+        message: "Trainer not found",
+      });
+    }
+
+    // Do not delete trainer while members are still assigned
+    const assignedMembersCount = await Member.countDocuments({
+      trainerId: trainer.trainerId,
+      gymId: req.user.gymId,
+    });
+
+    if (assignedMembersCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Cannot delete trainer while members are assigned. Reassign the members first.",
+        data: {
+          assignedMembersCount,
+        },
+      });
+    }
+
+    await Trainer.deleteOne({
+      _id: trainer._id,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Trainer deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete trainer error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 
 export {
   addTrainer,
   getTrainers,
   loginTrainer,
   getTrainerClients,
+  getTrainerById,
+  assignMemberToTrainer,
+  deleteTrainer,
 };
