@@ -370,4 +370,55 @@ const getMembers = async (req, res) => {
   }
 };
 
-export { addMember, getMembers };
+const deleteMember = async (req, res) => {
+  try {
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Only gym owners can delete members",
+      });
+    }
+
+    const { clientId } = req.params;
+
+    const member = await Member.findOne({
+      clientId: clientId.trim(),
+      gymId: req.user.gymId,
+    });
+
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: "Member not found in this gym",
+      });
+    }
+
+    await Member.deleteOne({
+      _id: member._id,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Member deleted successfully",
+      data: {
+        member: {
+          clientId: member.clientId,
+          fullName: member.fullName,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Delete member error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export {
+  addMember,
+  getMembers,
+  deleteMember,
+};
